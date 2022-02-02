@@ -1,0 +1,15 @@
+# Coverage directory used by tools like istanbul
+coverage
+
+# Dependency directories
+node_modules/
+
+# dotenv environment variables file
+.env
+
+# IDE Files
+.vscode
+.idea
+
+lead_routing.sqlite
+google-secret.json

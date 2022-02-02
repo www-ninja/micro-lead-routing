@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "validateWeight": true,
+  "properties": {
+    "team_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "creator_kwuid": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 30,
+      "transform": [
+        "trim"
+      ]
+    },
+    "disabled": {
+      "type": "boolean"
+    },
+    "deleted_at": {
+      "type": "integer"
+    },
+    "settings": {
+      "type": "object",
+      "compareActiveTime": true,
+      "properties": {
+        "active_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 127
+        },
+        "active_from": {
+          "type": "integer"
+        },
+        "active_until": {
+          "type": "integer"
+        },
+        "algorithm": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rerouting_delay": {
+          "type": "integer",
+          "minimum": 30,
+          "maximum": 31535999
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1
+        },
+        "is_simple_weight": {
+          "type": "boolean"
+        }
+      }
+    },
+    "agents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "weight": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "is_all_sources": {
+      "type": "boolean"
+    },
+    "notification_type": {
+      "type": "string",
+      "enum": ["none", "lead received", "lead claimed", "all"],
+      "minLength": 1
+    }
+  },
+  "required": [
+    "team_id",
+    "creator_kwuid",
+    "title",
+    "agents",
+    "disabled"
+  ],
+  "if": {
+    "properties": {
+      "is_all_sources": {
+        "enum": [
+          false
+        ]
+      }
+    }
+  },
+  "then": {
+    "required": [
+      "sources"
+    ]
+  }
+}

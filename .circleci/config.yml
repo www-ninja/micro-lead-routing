@@ -1,0 +1,192 @@
+version: 2
+jobs:
+  build:
+    working_directory: /app
+    docker:
+      # CI JS build image: https://github.com/KWRI/ci-build-js
+      - image: gcr.io/kw-image-repo/ci-build-js:10.16.0
+        auth:
+          username: $GCR_PULL_LOGIN
+          password: $GCR_PULL_SERVICE_KEY
+        environment:
+          DOCKER_IMAGE_NAME: gcr.io/kw-image-repo/leadrouting-micro
+          DEPLOYMENT_NAME: lead-routing
+          DEPLOYMENT_CONTAINER_NAME: node
+          # Some microservices contain additional worker deployment.
+          # Assign variables if worker deployment exists.
+          DEPLOYMENT_NAME_WORKER: ""
+          DEPLOYMENT_CONTAINER_NAME_WORKER: ""
+          # Some microservices contain cronjob task.
+          # Assign variables if cronjob task exists.
+          CRONJOB_NAME: ""
+          CRONJOB_CONTAINER_NAME: ""
+
+      - image: mysql:5.7
+        environment:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: homestead
+          MYSQL_USER: homestead
+          MYSQL_PASSWORD: secret
+
+      - image: circleci/redis:latest
+
+    steps:
+      - setup_remote_docker:
+          docker_layer_caching: true
+
+      - checkout
+
+      - run:
+          name: Setup Environment Variables
+          command: |
+            /scripts/vars-set.sh
+
+      - run:
+          name: Build Docker Images
+          command: |
+            /scripts/docker-build.sh
+
+      - run:
+          name: Save Docker Images
+          command: |
+            /scripts/docker-save.sh
+
+      - persist_to_workspace:
+          root: workspace
+          paths:
+            - bash_env
+            - image_tag.tar
+            - image_commit.tar
+
+      - run:
+          name: Waiting for MySQL
+          command: |
+            apt-get install netcat -y
+            for i in `seq 1 30`;
+            do
+              nc -z 127.0.0.1 3306 && echo MySQL is ready && break
+              echo -n .
+              sleep 1
+              if [[ i -eq 30 ]]; then
+                echo Failed waiting for MySQL && exit 1
+              fi
+            done
+
+      - run:
+          name: Prepare for Tests
+          command: |
+            /scripts/prepare-tests.sh
+
+      - run:
+          name: Run Tests
+          command: |
+            npm run test
+
+  push:
+    docker:
+      # CI push and deploy image: https://github.com/KWRI/ci-deploy-gcp
+      - image: gcr.io/kw-image-repo/ci-deploy-gcp
+        auth:
+          username: $GCR_PULL_LOGIN
+          password: $GCR_PULL_SERVICE_KEY
+
+    steps:
+      - attach_workspace:
+          at: workspace
+
+      - setup_remote_docker
+
+      - run:
+          name: Load Docker Images
+          command: |
+            /scripts/docker-image-load.sh
+
+      - run:
+          name: Import variables from build job
+          command: |
+            cat workspace/bash_env >> $BASH_ENV
+
+      - run:
+          name: Push Docker Images
+          command: |
+            /scripts/docker-image-push.sh
+
+  deploy: &deploy
+    docker:
+      # CI push and deploy image: https://github.com/KWRI/ci-deploy-gcp
+      - image: gcr.io/kw-image-repo/ci-deploy-gcp
+        auth:
+          username: $GCR_PULL_LOGIN
+          password: $GCR_PULL_SERVICE_KEY
+
+    steps:
+      - run:
+          name: Setup Google Cloud SDK
+          command: |
+            /scripts/vars-set.sh
+
+      - attach_workspace:
+          at: workspace
+
+      - run:
+          name: Import variables from Build job
+          command: |
+            cat workspace/bash_env >> $BASH_ENV
+
+      - run:
+          name: Deploy to K8s Cluster
+          command: |
+            /scripts/deploy-gcp-k8s.sh
+
+  dev-deploy:
+    <<: *deploy
+
+  qa-deploy:
+    <<: *deploy
+
+workflows:
+  version: 2
+  build_push_deploy:
+    jobs:
+      - build:
+          context: build_only
+          filters:
+            branches:
+              only:
+                - develop
+                - master
+                - /^feature\/\S*$/
+                - /^hotfix\/\S*$/
+                - /^release\/\S*$/
+                - /^fix\/\S*$/
+            tags:
+              only:
+                - /^v\d+\.\d+(\.\d+)?(-\S*)?$/
+      - push:
+          context: nonprod_push_and_deploy
+          requires:
+            - build
+          filters:
+            tags:
+              only:
+                - /^v\d+\.\d+(\.\d+)?(-\S*)?$/
+      - dev-deploy:
+          context: nonprod_push_and_deploy
+          requires:
+            - build
+            - push
+          filters:
+            branches:
+              only:
+                - develop
+
+      - qa-deploy:
+          context: nonprod_push_and_deploy
+          requires:
+            - build
+            - push
+          filters:
+            branches:
+              only:
+                - /^hotfix\/\S*$/
+                - /^release\/\S*$/

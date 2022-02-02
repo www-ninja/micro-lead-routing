@@ -1,0 +1,72 @@
+apis:
+- ensure: "removed"
+  attributes:
+    upstream_url: http://$upstream_host
+  name: leadrouting-micro
+- ensure: "removed"
+  attributes:
+    upstream_url: http://$upstream_host/health
+  name: leadrouting-micro.health
+services:
+- routes:
+  - attributes:
+      methods:
+      - OPTIONS
+      - GET
+      - POST
+      - PUT
+      - PATCH
+      - DELETE
+      paths:
+      - /leadrouting-micro
+  attributes:
+    url: http://$upstream_host
+  plugins:
+  - attributes:
+      config:
+        key_claim_name: iss
+        run_on_preflight: true
+        secret_is_base64: false
+        uri_param_names:
+        - jwt
+        anonymous: $callback_consumer_anonymous
+      enabled: true
+    name: jwt
+  - attributes:
+      config:
+        client_id: $client_id
+        client_secret: $client_secret
+        discovery: $discovery_url
+        introspection_endpoint: $introspection_url
+        response_type: token
+        scope: openid email profile
+        ssl_verify: no
+        token_endpoint_auth_method: client_secret_basic
+      enabled: true
+    name: oidc
+  - attributes:
+      config:
+        uri_param_names:
+        - jwt
+      enabled: true
+    name: jwt-claim-headers
+
+# Health check/Ping (Unauthenticated)
+  name: leadrouting-micro
+- routes:
+  - attributes:
+      methods:
+      - OPTIONS
+      - GET
+      paths:
+      - /leadrouting-micro/health
+  attributes:
+    url: http://$upstream_host/health
+  plugins: []
+  name: leadrouting-micro.health
+plugins: []
+consumers:
+- acls: []
+  credentials: []
+  custom_id: '0'
+  username: anonymous
